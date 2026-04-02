@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Master Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <nav class="bg-slate-900 text-white px-8 py-4 flex justify-between items-center shadow-xl">
+        <h1 class="text-xl font-bold flex items-center">
+            <i class="fas fa-user-shield mr-3 text-blue-400"></i> Master Control Panel
+        </h1>
+        <div class="flex items-center space-x-6">
+            <span class="text-sm text-slate-400">Logged in as: <strong>System Admin</strong></span>
+            <button onclick="logout()" class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg text-sm transition font-bold">Logout</button>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-8 pt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
+            <div>
+                <p class="text-slate-500 text-sm font-medium">Total Users</p>
+                <h3 id="count-users" class="text-2xl font-bold text-slate-900">0</h3>
+            </div>
+            <i class="fas fa-users text-blue-100 text-3xl"></i>
+        </div>
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
+            <div>
+                <p class="text-slate-500 text-sm font-medium">Active Postings</p>
+                <h3 id="count-jobs" class="text-2xl font-bold text-emerald-900">0</h3>
+            </div>
+            <i class="fas fa-briefcase text-emerald-100 text-3xl"></i>
+        </div>
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
+            <div>
+                <p class="text-slate-500 text-sm font-medium">Recruiters</p>
+                <h3 id="count-recruiters" class="text-2xl font-bold text-amber-900">0</h3>
+            </div>
+            <i class="fas fa-user-tie text-amber-100 text-3xl"></i>
+        </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto p-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6 flex items-center">
+                <i class="fas fa-users-cog mr-3 text-blue-600"></i> System Users
+            </h2>
+            <div id="userList" class="space-y-3">
+                <p class="text-slate-400 italic text-center py-4">Loading system users...</p>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6 flex items-center">
+                <i class="fas fa-globe mr-3 text-emerald-600"></i> Global Postings
+            </h2>
+            <div id="internshipList" class="space-y-3">
+                <p class="text-slate-400 italic text-center py-4">Loading internships...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('token');
+        const role = localStorage.getItem('role');
+
+        if (!token || role !== 'admin') {
+            window.location.href = "login.html";
+        }
+
+        async function loadMasterData() {
+            try {
+                const res = await fetch('/api/admin/stats', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+
+                // Update Stats Bar
+                document.getElementById('count-users').innerText = data.users.length;
+                document.getElementById('count-jobs').innerText = data.internships.length;
+                document.getElementById('count-recruiters').innerText = data.users.filter(u => u.role === 'recruiter').length;
+
+                // 1. Render Users
+                const uList = document.getElementById('userList');
+                uList.innerHTML = data.users.map(u => {
+                    // Color code roles for easier management
+                    const roleColor = u.role === 'recruiter' ? 'text-amber-600' : 'text-blue-600';
+                    
+                    return `
+                        <div class="flex justify-between items-center p-4 bg-slate-50 rounded-xl border border-slate-100 hover:bg-white transition shadow-sm">
+                            <div>
+                                <p class="font-bold text-slate-900">${u.name}</p>
+                                <p class="text-xs text-slate-500">${u.email} | <span class="uppercase tracking-tighter font-black ${roleColor}">${u.role}</span></p>
+                            </div>
+                            ${u.role !== 'admin' ? `
+                                <button onclick="deleteUser('${u._id}')" class="text-slate-300 hover:text-red-500 transition-colors p-2">
+                                    <i class="fas fa-user-minus"></i>
+                                </button>
+                            ` : '<span class="text-[10px] text-slate-400 font-bold px-2">MASTER</span>'}
+                        </div>
+                    `;
+                }).join('');
+
+                // 2. Render Internships with Descriptions
+                const iList = document.getElementById('internshipList');
+                iList.innerHTML = data.internships.map(job => `
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-100 hover:bg-white transition shadow-sm">
+                        <div class="flex justify-between items-start">
+                            <div class="pr-4">
+                                <p class="font-bold text-slate-900">${job.title}</p>
+                                <p class="text-xs text-slate-500 font-medium">${job.company}</p>
+                            </div>
+                            <button onclick="deleteJob('${job._id}')" class="text-slate-300 hover:text-red-500 transition-colors p-2 shrink-0">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                        <p class="text-[11px] text-slate-600 mt-2 line-clamp-2 italic border-t pt-2 leading-relaxed">
+                            ${job.description || 'No description provided.'}
+                        </p>
+                    </div>
+                `).join('');
+
+            } catch (err) {
+                console.error("Master panel fetch error:", err);
+            }
+        }
+
+        async function deleteUser(id) {
+            if (!confirm("Are you sure? This will remove the user permanently.")) return;
+            await fetch(`/api/admin/users/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            loadMasterData();
+        }
+
+        async function deleteJob(id) {
+            if (!confirm("Remove this internship listing from the entire system?")) return;
+            await fetch(`/api/internships/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            loadMasterData();
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = "login.html";
+        }
+
+        loadMasterData();
+    </script>
+</body>
+</html>

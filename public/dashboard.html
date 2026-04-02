@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Internship Tracker - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+    <nav class="bg-white shadow-sm border-b px-8 py-4 flex justify-between items-center">
+        <h1 class="text-2xl font-bold text-blue-600"><i class="fas fa-briefcase mr-2"></i>SmartTracker</h1>
+        <div class="flex items-center space-x-6">
+            <span id="userBadge" class="hidden px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-100 text-blue-700"></span>
+            <button onclick="logout()" class="text-gray-600 hover:text-red-500 font-medium">Logout</button>
+        </div>
+    </nav>
+
+    <div class="max-w-6xl mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div id="recruiterPanel" class="md:col-span-1 hidden">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 sticky top-6">
+                <h2 class="text-lg font-semibold mb-4 text-gray-800">Post New Internship</h2>
+                <form id="addForm" class="space-y-4" autocomplete="off">
+                    <input type="text" id="title" placeholder="Job Title" class="w-full p-2 border rounded-lg outline-blue-500" required>
+                    <input type="text" id="company" placeholder="Company Name" class="w-full p-2 border rounded-lg outline-blue-500" required>
+                    <textarea id="description" placeholder="Job Description" class="w-full p-2 border rounded-lg outline-blue-500" rows="3" required></textarea>
+                    <input type="text" id="stipend" placeholder="Stipend (e.g. $1000/mo)" class="w-full p-2 border rounded-lg outline-blue-500">
+                    <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition">Add Posting</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="mainContent" class="md:col-span-3">
+            <div class="flex space-x-4 mb-6">
+                <button id="postingsTab" onclick="showSection('postings')" class="text-blue-600 border-b-2 border-blue-600 pb-1 font-semibold">Available Internships</button>
+                <button id="appsTab" onclick="showSection('my-apps')" class="text-gray-500 hover:text-blue-600 pb-1 font-semibold">My Applications</button>
+            </div>
+            <div id="postingsList" class="space-y-4"></div>
+        </div>
+    </div>
+
+
+<script>
+    const token = localStorage.getItem('token');
+    const userRole = localStorage.getItem('role');
+    const currentUserId = localStorage.getItem('userId'); 
+    
+    if (!token) window.location.href = "login.html";
+
+    const badge = document.getElementById('userBadge');
+    badge.innerText = userRole;
+    badge.classList.remove('hidden');
+
+    if (userRole === 'admin' || userRole === 'recruiter') {
+        document.getElementById('recruiterPanel').classList.remove('hidden');
+        document.getElementById('mainContent').classList.replace('md:col-span-3', 'md:col-span-2');
+        if (userRole === 'admin') document.getElementById('appsTab').innerText = "View All Applications";
+        if (userRole === 'recruiter') document.getElementById('appsTab').innerText = "Job Applicants";
+    }
+
+    // 1. FIXED: FETCH POSTINGS & SHOW CRUD BUTTONS
+    async function fetchInternships() {
+        try {
+            const [jobsRes, appsRes] = await Promise.all([
+                fetch('/api/internships', { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch('/api/applications/my-applications', { headers: { 'Authorization': `Bearer ${token}` } })
+            ]);
+
+            const jobs = await jobsRes.json();
+            const myApps = await appsRes.json();
+            const appliedIds = new Set(myApps.map(app => app.internshipId ? app.internshipId._id : null));
+
+            const list = document.getElementById('postingsList');
+            list.innerHTML = jobs.map(job => {
+                const hasApplied = appliedIds.has(job._id);
+                
+                // CRITICAL FIX: Match the ID from MongoDB Monica to localStorage Monica
+                const isOwner = String(job.createdBy) === String(currentUserId) || userRole === 'admin';
+
+                let actionButtons = "";
+                if (userRole === 'admin' || userRole === 'recruiter') {
+                    // This logic enables CRUD only if you own the post
+                    actionButtons = isOwner ? `
+                        <div class="flex space-x-3">
+                            <button onclick="editJob('${job._id}')" class="text-blue-500 hover:text-blue-700 text-sm"><i class="fas fa-edit"></i> Edit</button>
+                            <button onclick="deleteJob('${job._id}')" class="text-red-500 hover:text-red-700 text-sm"><i class="fas fa-trash"></i> Delete</button>
+                        </div>` : "<span class='text-xs text-gray-400 italic'>Viewing Only</span>"; 
+                } else {
+                    actionButtons = hasApplied 
+                        ? `<button class="bg-gray-100 text-gray-400 px-4 py-1.5 rounded-md text-sm cursor-not-allowed border" disabled>Applied</button>`
+                        : `<button onclick="applyJob('${job._id}')" class="bg-blue-600 text-white px-4 py-1.5 rounded-md text-sm hover:bg-blue-700 transition">Apply Now</button>`;
+                }
+
+                return `
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex justify-between items-start transition hover:shadow-md">
+                        <div class="space-y-2">
+                            <h3 class="font-bold text-lg text-gray-800">${job.title}</h3>
+                            <p class="text-gray-500 text-sm"><i class="fas fa-building mr-1"></i> ${job.company}</p>
+                            <p class="text-gray-600 text-sm mt-2 leading-relaxed">${job.description || 'No description provided.'}</p>
+                            <p class="text-blue-600 font-medium text-sm mt-1">${job.stipend || 'Competitive'}</p>
+                        </div>
+                        <div class="text-right">${actionButtons}</div>
+                    </div>`;
+            }).join('');
+        } catch (err) {
+            console.error("Postings Error:", err);
+        }
+    }
+
+    // 2. FETCH APPLICANTS (NOW WORKING)
+    async function fetchMyApplications() {
+        let url = '/api/applications/my-applications';
+        if (userRole === 'admin') url = '/api/applications/admin/list';
+        if (userRole === 'recruiter') url = '/api/applications/recruiter/my-applicants';
+
+        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+        const apps = await res.json();
+        const list = document.getElementById('postingsList');
+
+        if (!apps || apps.length === 0) {
+            list.innerHTML = `<p class="text-center text-gray-400 py-10 italic">No applications found.</p>`;
+            return;
+        }
+
+        list.innerHTML = apps.map(app => {
+            const statusColors = { "Applied": "bg-blue-100 text-blue-700", "Selected": "bg-green-100 text-green-700", "Rejected": "bg-red-100 text-red-700", "Shortlisted": "bg-yellow-100 text-yellow-700" };
+            const badgeClass = statusColors[app.status] || "bg-gray-100 text-gray-700";
+
+            if (userRole === 'admin' || userRole === 'recruiter') {
+                return `
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+                        <div>
+                            <h3 class="font-bold text-lg text-gray-800">${app.internshipId ? app.internshipId.title : 'Deleted Position'}</h3>
+                            <p class="text-gray-500 text-sm"><strong>Student:</strong> ${app.userId ? app.userId.name : 'Unknown'}</p>
+                            <a href="${app.resumeLink}" target="_blank" class="text-blue-500 text-xs hover:underline mt-2 inline-block">
+                                <i class="fas fa-file-pdf mr-1"></i> View Resume
+                            </a>
+                        </div>
+                        <div class="text-right">
+                            <select onchange="updateStatus('${app._id}', this.value)" class="border p-1 rounded text-xs bg-gray-50">
+                                <option value="Applied" ${app.status === 'Applied' ? 'selected' : ''}>Applied</option>
+                                <option value="Selected" ${app.status === 'Selected' ? 'selected' : ''}>Selected</option>
+                                <option value="Rejected" ${app.status === 'Rejected' ? 'selected' : ''}>Rejected</option>
+                                <option value="Shortlisted" ${app.status === 'Shortlisted' ? 'selected' : ''}>Shortlisted</option>
+                            </select>
+                        </div>
+                    </div>`;
+            }
+
+            return `
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+                    <div>
+                        <h3 class="font-bold text-lg text-gray-800">${app.internshipId ? app.internshipId.title : 'Position Removed'}</h3>
+                        <p class="text-gray-500 text-sm">${app.internshipId ? app.internshipId.company : 'N/A'}</p>
+                        <p class="text-xs text-gray-400 mt-2">Applied: ${new Date(app.appliedDate).toLocaleDateString()}</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="px-3 py-1 rounded-full text-xs font-bold uppercase ${badgeClass}">${app.status}</span>
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    async function updateStatus(appId, newStatus) {
+        await fetch(`/api/applications/status/${appId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ status: newStatus })
+        });
+        fetchMyApplications();
+    }
+
+    async function editJob(id) {
+        const newTitle = prompt("New Title:");
+        const newDesc = prompt("New Description:");
+        if (!newTitle) return;
+        await fetch(`/api/internships/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ title: newTitle, description: newDesc })
+        });
+        fetchInternships();
+    }
+
+    async function deleteJob(id) {
+        if (!confirm("Delete this posting?")) return;
+        await fetch(`/api/internships/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        fetchInternships();
+    }
+
+    async function applyJob(id) {
+        const resume = prompt("Enter Resume Link:");
+        if (!resume) return;
+        const res = await fetch('/api/applications/apply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ internshipId: id, resumeLink: resume })
+        });
+        if (res.ok) fetchInternships();
+        else alert((await res.json()).msg);
+    }
+
+    function showSection(type) {
+        document.getElementById('postingsTab').className = type === 'postings' ? "text-blue-600 border-b-2 border-blue-600 pb-1 font-semibold" : "text-gray-500 hover:text-blue-600 pb-1 font-semibold";
+        document.getElementById('appsTab').className = type === 'my-apps' ? "text-blue-600 border-b-2 border-blue-600 pb-1 font-semibold" : "text-gray-500 hover:text-blue-600 pb-1 font-semibold";
+        if (type === 'postings') fetchInternships(); else fetchMyApplications();
+    }
+
+    document.getElementById('addForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await fetch('/api/internships', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({
+                title: document.getElementById('title').value,
+                company: document.getElementById('company').value,
+                description: document.getElementById('description').value,
+                stipend: document.getElementById('stipend').value
+            })
+        });
+        document.getElementById('addForm').reset();
+        fetchInternships();
+    });
+
+    function logout() { localStorage.clear(); window.location.href = "login.html"; }
+    
+    // Initial Load
+    fetchInternships();
+</script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Smart Internship Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 flex items-center justify-center min-h-screen">
+
+    <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-100">
+        <div class="text-center mb-8">
+            <div class="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-user-shield text-blue-600 text-2xl"></i>
+            </div>
+            <h2 class="text-3xl font-bold text-gray-800">Login</h2>
+            <p class="text-gray-500 mt-2">Select your portal to continue</p>
+        </div>
+
+        <form id="loginForm" class="space-y-5" autocomplete="off">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                <input type="email" id="email" placeholder="name@company.com" 
+                    class="w-full p-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition" required>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input type="password" id="password" autocomplete="new-password"" 
+                    class="w-full p-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition" required>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Login As</label>
+                <select id="roleChoice" class="w-full p-3 border border-gray-300 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500 transition cursor-pointer">
+                    <option value="student">Student / Applicant</option>
+                    <option value="recruiter">Recruiter</option>
+                    <option value="admin">System Admin</option>
+                </select>
+            </div>
+
+            <button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold text-lg hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all active:scale-95">
+                Sign In
+            </button>
+        </form>
+
+        <div class="mt-8 text-center border-t pt-6">
+            <p class="text-gray-600">New user? 
+                <a href="register.html" class="text-blue-600 font-semibold hover:underline">Create Account</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            localStorage.clear(); // Recommended: Clear old session data before starting a new login
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const selectedRole = document.getElementById('roleChoice').value;
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    if (data.role !== selectedRole) {
+                        alert(`Access Denied: Your account is registered as ${data.role}.`);
+                        return;
+                    }
+
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('role', data.role); 
+                    localStorage.setItem('userId', data.userId);
+
+                    // Redirection Logic
+                    if (data.role === 'admin') {
+                        window.location.href = "admin_panel.html"; 
+                    } else if (data.role === 'recruiter') {
+                        window.location.href = "dashboard.html"; 
+                    } else {
+                        window.location.href = "student_dashboard.html";
+                    }
+                } else {
+                    alert(data.msg || "Login failed.");
+                }
+            } catch (err) {
+                alert("Server connection failed.");
+            }
+        });
+    </script>
+</body>
+</html>
